@@ -5,7 +5,6 @@
 """
 from __future__ import annotations
 
-import hashlib
 import time
 from typing import Any
 
@@ -31,53 +30,13 @@ class StreamSourceService(BaseModuleService):
 
         从种子数据生成模拟事件批次，写入共享存储产物流水线序号，
         下游模块可通过读取 store 获取最新批次数据。
+
+        批次序号（batch_seq）和源位点（source_offset）由批次链路在锁内分配，
+        保证并发生产不会重号，也不会覆盖已有批次。
         """
-        source = None
-        for r in store.rows(self.MODULE):
-            if r.get("源端名称") == source_name:
-                source = r
-                break
+        from app.services.batch_flow import produce_batch
 
-        if source is None:
-            return {"ok": False, "error": f"源端「{source_name}」不存在"}
-
-        if source.get("status") == "异常断连":
-            return {"ok": False, "error": f"源端「{source_name}」异常断连, 无法生产数据"}
-
-        if source.get("status") == "已下线":
-            return {"ok": False, "error": f"源端「{source_name}」已下线"}
-
-        batch_id = hashlib.md5(
-            f"{source_name}_{time.time()}".encode()
-        ).hexdigest()[:12]
-        events = []
-        base_ts = time.time()
-        for i in range(batch_size):
-            events.append({
-                "event_id": f"{batch_id}_{i:04d}",
-                "topic": source.get("Topic名称", ""),
-                "format": source.get("数据格式", "JSON"),
-                "payload": {
-                    "user_id": f"u{i % 5}",
-                    "value": round(10.0 + i * 3.7 + (hash(str(i)) % 50), 2),
-                    "region": f"region_{i % 4}",
-                    "device": f"device_{i % 3}",
-                },
-                "event_time": base_ts + i * 1.5,
-                "source": source_name,
-            })
-        source_batch = {
-            "batch_id": batch_id,
-            "source": source_name,
-            "event_count": len(events),
-            "events": events,
-            "produced_at": time.time(),
-            "topic": source.get("Topic名称", ""),
-            "deserializer": source.get("反序列化", "DEFAULT"),
-            "consumer_group": source.get("消费者组", "default"),
-        }
-        store.rows(self.MODULE).append(source_batch)
-        return {"ok": True, "batch_id": batch_id, "event_count": len(events)}
+        return produce_batch(source_name, batch_size)
 
     def validate_connection(self, source_name: str) -> dict[str, Any]:
         """验证源端连接健康状态：格式校验、消费者组可达、位点有效。"""

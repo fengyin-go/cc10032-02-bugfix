@@ -11,17 +11,36 @@
 .
 ├── frontend/                 Vue 3 + Vite + TypeScript 前端
 │   ├── src/views/WorkbenchView.vue|tsx  全部模块共享工作台
+│   ├── src/components/      批次工作台、批量结果、结果落地发布面板
 │   ├── src/data/modules.ts              18个业务模块配置
 │   ├── src/api/              统一请求封装
 │   └── vite.config.ts        dev server 配置（open: false）
 ├── backend/                  FastAPI（Python） 后端
 │   ├── app/routers/resource.py  通用查询/导出/登记/动作接口
+│   ├── app/routers/batch_flow.py 批次链路接口（工作台/结果/封存/台账/发布）
 │   ├── app/services/<key>.py    每个模块独立领域逻辑
+│   ├── app/services/batch_flow.py 批次窗口定义、指标版本、回执与发布事务
 │   ├── app/services/base.py     共享服务骨架
 │   └── app/store.py          内存数据仓库与示例数据
 ├── .gitignore
 └── docker-compose.yml
 ```
+
+## 批次链路
+
+源端每生产一个批次都会分配递增的 `batch_seq` 和 `source_offset`，后续处理按批次推进：
+
+1. 窗口定义：`window_config` 逐批次生成窗口定义，旧批次的窗口不会被新批次覆盖。
+2. 窗口指标：`window_metric_result` 保存组级结果，`window_metric_row_result` 保存逐条结果，
+   两者各自形成唯一版本（`grp_vN` / `row_vN`）；同一分组在不同批次重复出现时保留两份结果。
+3. 封存回执：每个批次只允许一份成功回执；较早批次未封存时新批次不能越序写入或封存。
+4. 结果落地：`sink_output` 按批次号读取同一批窗口指标结果，发现断档时保持当前发布版本不变；
+   支持按源端位点排序发布，或按业务事件时间合并同一分组。发布使用整组事务，异常回滚。
+5. 台账与诊断：`/api/batch-flow/ledger` 生成整组处理台账（同一进度只保留一份），
+   `/api/batch-flow/diagnose` 同时核对源端调用链与结果落地数据流。
+
+对应页面：流式源端（批次工作台）、滑动指标（按批次的窗口指标结果）、
+结果落地（发布台账与逐条明细）。
 
 ## 启动
 

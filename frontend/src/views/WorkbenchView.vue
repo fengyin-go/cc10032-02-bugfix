@@ -90,6 +90,10 @@
       <span>共 {{ total }} 条{{ meta.name }}记录</span>
       <span v-if="errorMessage" class="error-text">{{ errorMessage }}</span>
     </footer>
+
+    <SourceBatchPanel v-if="meta.key === 'stream_source'" :module-key="meta.key" />
+    <BatchResultPanel v-else-if="meta.key === 'window_config'" />
+    <SinkPublishPanel v-else-if="meta.key === 'sink_output'" />
   </section>
 </template>
 
@@ -103,6 +107,9 @@ import {
   moduleMeta,
   runAction as applyAction,
 } from '@/api/backend-service'
+import BatchResultPanel from '@/components/BatchResultPanel.vue'
+import SinkPublishPanel from '@/components/SinkPublishPanel.vue'
+import SourceBatchPanel from '@/components/SourceBatchPanel.vue'
 import type { EntryRow } from '@/data/types'
 
 const props = defineProps<{ moduleKey: string }>()
